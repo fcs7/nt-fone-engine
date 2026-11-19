@@ -198,9 +198,9 @@ for u in (a, b):
     bad = [l for l in open(u.log, errors="replace") if re.search(r"G729 (encode error|codec decode|codec PLC)", l, re.I)]
     if bad: fail(f"{u.name}: erros do codec G729 no log: {bad[:3]}")
     pico, altas, hz = tone(u.wav)
-    step(f"6 {u.name}: WAV recebido pico={pico} amostras_altas={altas} tom≈{hz:.0f} Hz")
+    step(f"6 {u.name}: WAV recebido pico={pico} amostras_altas={altas} tom~{hz:.0f} Hz")
     # G.729 é com perdas, mas um tom puro de 440 Hz tem de sair como tom: energia real e a frequência certa.
     if pico < 3000 or altas < 4000: fail(f"{u.name}: áudio decodificado fraco/silencioso (pico={pico}, altas={altas})")
-    if not 0.85 * TONE <= hz <= 1.15 * TONE: fail(f"{u.name}: tom decodificado em {hz:.0f} Hz, esperado ≈{TONE} Hz")
+    if not 0.85 * TONE <= hz <= 1.15 * TONE: fail(f"{u.name}: tom decodificado em {hz:.0f} Hz, esperado ~{TONE} Hz")
 cleanup()
 print("G729 SMOKE OK")
