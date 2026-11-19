@@ -1,0 +1,317 @@
+name: windows
+
+# Só manual. Com release_tag preenchido, ao fim publica uma release (binários + código-fonte correspondente, GPLv3 §6).
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag da release a criar (vazio = só artefatos, sem release)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+# Sem cancelar run em andamento: cancelar no meio de um release deixaria uma release sem todos os arquivos.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BARESIP_VERSION: v4.12.0
+  OPUS_VERSION: v1.5.2
+  BCG729_VERSION: 1.1.1
+  # Commit da tag 1.1.1 (anotada; gh api repos/BelledonneCommunications/bcg729/git/ref/tags/1.1.1 + git/tags/<sha>): o clone confere, como o hash do SDL.
+  BCG729_SHA: faaa895862165acde6df8add722ba4f85a25007d
+  SDL_VERSION: 2.32.10
+  SDL_SHA256: AF347939395A58B365846AAEA27391E69F9EC9D4DD650D6AC40802159B418A6E
+  # Fonte oficial do SDL2 (SDL2-<versão>.tar.gz da mesma release; o projeto só publica .sig, então o hash é fixado aqui).
+  SDL_SRC_SHA256: 5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165
+  # OpenSSL estático vem do release v2026.10.0 de baresip/tools (openssl-windows-x64.zip, receita em ssl/ e .github/workflows/build.yml daquele tag).
+  # Versão e hash do zip fixados: se mudarem, o build falha e licenses/ e THIRD_PARTY.md precisam ser revistos junto.
+  OPENSSL_PREBUILT_TAG: v2026.10.0
+  OPENSSL_ZIP_SHA256: 35dcf7d7dc47c7557f89c58202de031be0bbdd3854ed4f13270ebc9342adab07
+  OPENSSL_VERSION: 4.0.3
+
+jobs:
+  baresip:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      # Falha antes de gastar o build: tag inválida ou já existente (gh release create reaproveitaria a tag e apontaria a release para outro commit).
+      - name: Tag da release (se informada)
+        if: inputs.release_tag != ''
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "::error::release_tag inválida (use letras, números, ponto, hífen e sublinhado)"; exit 1; }
+          if out=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" 2>&1); then
+            echo "::error::a tag $RELEASE_TAG já existe; use outra"; exit 1
+          elif [[ "$out" != *"HTTP 404"* ]]; then
+            echo "::error::não deu para verificar a tag $RELEASE_TAG: $out"; exit 1
+          fi
+      - name: OpenSSL pré-compilado
+        shell: bash
+        run: |
+          curl -fsSL -o openssl.zip "https://github.com/baresip/tools/releases/download/$OPENSSL_PREBUILT_TAG/openssl-windows-x64.zip"
+          echo "$OPENSSL_ZIP_SHA256  openssl.zip" | sha256sum -c -
+          7z x openssl.zip
+          echo "OPENSSL_ROOT_DIR=$GITHUB_WORKSPACE\\openssl-windows-x64" >> $GITHUB_ENV
+      - name: Fontes
+        shell: bash
+        run: |
+          # srcpkg/ junta o código-fonte dos terceiros para o pacote nt-fone-engine-source.tar.gz; facts.txt alimenta o build-manifest.txt.
+          mkdir srcpkg
+          # git archive guarda a árvore do commit (upstream limpo): é arquivado ANTES dos patches, que vêm deste repositório.
+          archive_clone() { # <dir> <tag>
+            git -C "$1" archive --format=tar.gz --prefix="$1-$2/" -o "../srcpkg/$1-$2.tar.gz" HEAD
+            echo "$1: tag $2, commit $(git -C "$1" rev-parse HEAD)" >> facts.txt
+          }
+          git clone --depth 1 -b $BARESIP_VERSION https://github.com/baresip/re re
+          archive_clone re $BARESIP_VERSION
+          python patches/patch-re-codec-prio.py re
+          git clone --depth 1 -b $BARESIP_VERSION https://github.com/baresip/baresip baresip
+          archive_clone baresip $BARESIP_VERSION
+          git clone --depth 1 -b $OPUS_VERSION https://github.com/xiph/opus opus
+          archive_clone opus $OPUS_VERSION
+          # libbcg729 (G.729, módulo baresip-modules/g729): tag fixada pelo commit.
+          git clone --depth 1 -b $BCG729_VERSION https://github.com/BelledonneCommunications/bcg729 bcg729
+          test "$(git -C bcg729 rev-parse HEAD)" = "$BCG729_SHA" || { echo "::error::bcg729 $BCG729_VERSION não aponta mais para $BCG729_SHA"; exit 1; }
+          archive_clone bcg729 $BCG729_VERSION
+          # MSVC não tem getopt.h: sem HAVE_GETOPT o main.c ignora todos os argumentos e o
+          # baresip lê %APPDATA%\.baresip (ctrl_tcp do nosso config nunca abria). Aceita "-f <dir>".
+          # Também: tecla q do sdl, ícone no baresip.exe e CMake com RC (ver o próprio script).
+          python patches/apply-baresip-patches.py baresip assets/ntfone.ico
+      - name: libvpx (vcpkg) + SDL2
+        shell: pwsh
+        run: |
+          # Sem libvpx/SDL2 o CMake do baresip pula vp8/vp9/sdl calado e o build segue verde: os caminhos vão pré-semeados
+          # e o smoke confere as strings dos módulos no exe. x64-windows-static-md = lib estática no CRT dinâmico (igual ao baresip/opus).
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install libvpx:x64-windows-static-md
+          if ($LASTEXITCODE) { throw "vcpkg install libvpx falhou ($LASTEXITCODE)" }
+          $inst = Join-Path $env:VCPKG_INSTALLATION_ROOT 'installed\x64-windows-static-md'
+          # Nome da lib varia (vpx.lib / vpxmd.lib): localiza em vez de fixar.
+          $libs = @(Get-ChildItem (Join-Path $inst 'lib') -Filter 'vpx*.lib')
+          if ($libs.Count -ne 1) { throw "esperava 1 vpx*.lib em $inst\lib, achei $($libs.Count): $($libs.Name -join ', ')" }
+          if (-not (Test-Path (Join-Path $inst 'include\vpx\vpx_codec.h'))) { throw "vpx/vpx_codec.h ausente em $inst\include" }
+          "VPX_INCLUDE_DIR=$((Join-Path $inst 'include') -replace '\\', '/')" >> $env:GITHUB_ENV
+          "VPX_LIBRARY=$($libs[0].FullName -replace '\\', '/')" >> $env:GITHUB_ENV
+          # SDL2 oficial (MSVC): headers vêm soltos, o sdl.c faz #include <SDL2/SDL.h>, então vão para include/SDL2.
+          $zip = Join-Path $env:RUNNER_TEMP 'sdl2.zip'
+          Invoke-WebRequest "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL_VERSION/SDL2-devel-$env:SDL_VERSION-VC.zip" -OutFile $zip
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $env:SDL_SHA256) { throw "hash do SDL2 não confere" }
+          $x = Join-Path $env:RUNNER_TEMP 'sdl2-x'
+          Expand-Archive $zip $x
+          $src = Join-Path $x "SDL2-$env:SDL_VERSION"
+          $d = Join-Path $env:GITHUB_WORKSPACE 'sdl2'
+          New-Item -ItemType Directory -Force "$d\include\SDL2", "$d\lib" | Out-Null
+          Copy-Item "$src\include\*.h" "$d\include\SDL2\" -ErrorAction Stop
+          Copy-Item "$src\lib\x64\SDL2.lib", "$src\lib\x64\SDL2.dll" "$d\lib\" -ErrorAction Stop
+          "SDL_HINTS=$($d -replace '\\', '/')" >> $env:GITHUB_ENV
+      # Código-fonte dos terceiros que não vêm de git clone (OpenSSL, SDL2, libvpx). Roda antes do build: se uma fonte não puder ser
+      # obtida e conferida, o run falha aqui em vez de entregar um pacote de fontes incompleto.
+      - name: Código-fonte de OpenSSL, SDL2 e libvpx
+        shell: bash
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
+          # OpenSSL: a versão do zip pré-compilado (opensslv.h) tem de ser a fixada; o tarball oficial é conferido com o .sha256 do projeto.
+          ver=$(sed -n 's/^# *define OPENSSL_VERSION_STR *"\(.*\)".*/\1/p' openssl-windows-x64/include/openssl/opensslv.h | tr -d '\r')
+          [ "$ver" = "$OPENSSL_VERSION" ] || fail "openssl.zip traz OpenSSL '$ver', esperado $OPENSSL_VERSION (revise licenses/ e THIRD_PARTY.md ao atualizar)"
+          base="https://github.com/openssl/openssl/releases/download/openssl-$ver"
+          curl -fsSL -o "srcpkg/openssl-$ver.tar.gz" "$base/openssl-$ver.tar.gz"
+          curl -fsSL -o openssl.tar.gz.sha256 "$base/openssl-$ver.tar.gz.sha256"
+          [ "$(sha256_of "srcpkg/openssl-$ver.tar.gz")" = "$(cut -d' ' -f1 openssl.tar.gz.sha256 | tr -d '\r')" ] || fail "hash do tarball do OpenSSL não confere com o .sha256 oficial"
+          echo "openssl: $ver (tag openssl-$ver; tarball oficial conferido com o .sha256 do projeto); binários de baresip/tools $OPENSSL_PREBUILT_TAG" >> facts.txt
+          # SDL2: tarball oficial da release, conferido com o hash fixado em SDL_SRC_SHA256.
+          curl -fsSL -o "srcpkg/SDL2-$SDL_VERSION.tar.gz" "https://github.com/libsdl-org/SDL/releases/download/release-$SDL_VERSION/SDL2-$SDL_VERSION.tar.gz"
+          [ "$(sha256_of "srcpkg/SDL2-$SDL_VERSION.tar.gz")" = "$SDL_SRC_SHA256" ] || fail "hash do SDL2-$SDL_VERSION.tar.gz não confere"
+          echo "SDL2: $SDL_VERSION (tag release-$SDL_VERSION); SDL2-devel-$SDL_VERSION-VC.zip SHA256 $SDL_SHA256 (conferido); SDL2-$SDL_VERSION.tar.gz SHA256 $SDL_SRC_SHA256 (conferido)" >> facts.txt
+          # libvpx: a versão é a do vcpkg do runner (não fixada). Usa o tarball que o próprio vcpkg baixou, conferido com o SHA512 do portfile,
+          # e leva também a pasta da porta (portfile + patches), que são os scripts que controlam a compilação.
+          vcpkg=$(cygpath -u "$VCPKG_INSTALLATION_ROOT")
+          vpx=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$vcpkg/ports/libvpx/vcpkg.json" | head -1)
+          [ -n "$vpx" ] || fail "não achei a versão do libvpx em $vcpkg/ports/libvpx/vcpkg.json"
+          listed=$("$vcpkg/vcpkg.exe" list libvpx | tr -d '\r' | tr -s ' ')
+          case "$listed" in *"$vpx"*) ;; *) fail "vcpkg list não mostra libvpx $vpx: $listed" ;; esac
+          shopt -s nullglob
+          tarballs=("$vcpkg"/downloads/*libvpx*.tar.gz)
+          [ ${#tarballs[@]} -eq 1 ] || fail "esperava 1 tarball do libvpx em $vcpkg/downloads, achei ${#tarballs[@]}"
+          want=$(grep -Eo 'SHA512 +[0-9a-f]{128}' "$vcpkg/ports/libvpx/portfile.cmake" | head -1 | awk '{print $2}')
+          [ -n "$want" ] && [ "$(sha512sum "${tarballs[0]}" | cut -d' ' -f1)" = "$want" ] || fail "tarball do libvpx não confere com o SHA512 do portfile"
+          cp "${tarballs[0]}" "srcpkg/libvpx-$vpx.tar.gz"
+          tar -czf "srcpkg/vcpkg-port-libvpx-$vpx.tar.gz" -C "$vcpkg/ports" libvpx
+          echo "libvpx: $vpx (vcpkg list: $listed); fonte $(basename "${tarballs[0]}") conferida com o SHA512 do portfile; commit do vcpkg: $(git -c safe.directory='*' -C "$vcpkg" rev-parse HEAD 2>/dev/null || echo n/d)" >> facts.txt
+      - name: Compilar re + baresip
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          cmake -S re -B re/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOPENSSL_USE_STATIC_LIBS=TRUE || exit /b 1
+          cmake --build re/build -j || exit /b 1
+          rem libopus estática (CRT dinâmico, igual ao baresip): o PBX recusa oferta só com G.711 (488).
+          set "OPUS_INST=%CD:\=/%/opus-inst"
+          cmake -S opus -B opus/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOPUS_BUILD_PROGRAMS=OFF -DOPUS_BUILD_TESTING=OFF "-DCMAKE_INSTALL_PREFIX=%OPUS_INST%" || exit /b 1
+          cmake --build opus/build -j || exit /b 1
+          cmake --install opus/build || exit /b 1
+          rem libbcg729 estática (CRT dinâmico /MD por padrão, igual ao baresip e ao opus). O CMake 4 recusa o cmake_minimum_required 3.1 do bcg729: a política mínima vai explícita.
+          set "BCG729_INST=%CD:\=/%/bcg729-inst"
+          cmake -S bcg729 -B bcg729/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DENABLE_SHARED=NO -DENABLE_STATIC=YES -DENABLE_TESTS=NO -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DCMAKE_INSTALL_PREFIX=%BCG729_INST%" || exit /b 1
+          cmake --build bcg729/build -j || exit /b 1
+          cmake --install bcg729/build || exit /b 1
+          mkdir out || exit /b 1
+          mkdir out\sounds || exit /b 1
+          set "APP_MODS=%GITHUB_WORKSPACE:\=/%/baresip-modules"
+          cd baresip || exit /b 1
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTATIC=ON -DOPENSSL_USE_STATIC_LIBS=TRUE "-DOPUS_HINTS=%OPUS_INST%" "-DBCG729_HINTS=%BCG729_INST%" "-DVPX_INCLUDE_DIR=%VPX_INCLUDE_DIR%" "-DVPX_LIBRARY=%VPX_LIBRARY%" "-DSDL_HINTS=%SDL_HINTS%" "-DAPP_MODULES_DIR=%APP_MODS%" "-DAPP_MODULES=ntaudio;g729" "-DMODULES=menu;ctrl_tcp;opus;g711;vp8;vp9;wasapi;dshow;sdl;selfview;srtp;auconv;auresamp;fakevideo;ausine;aufile" || exit /b 1
+          cmake --build build -j --target baresip_exe || exit /b 1
+          rem fakevideo (fonte/tela sintéticas) e ausine/aufile (tom e WAV, sem placa de som) existem só para os smokes; o app nunca os carrega.
+          copy build\baresip.exe ..\out\baresip.exe || exit /b 1
+          rem baresip.exe importa SDL2.dll (módulo sdl): vai no artefato e no instalador.
+          copy ..\sdl2\lib\SDL2.dll ..\out\SDL2.dll || exit /b 1
+          copy share\*.wav ..\out\sounds\ || exit /b 1
+          if not exist ..\out\baresip.exe exit /b 1
+      - name: Smoke — respeita -f e abre ctrl_tcp
+        shell: pwsh
+        run: |
+          $t = Join-Path $env:RUNNER_TEMP "smoke dir"
+          New-Item -ItemType Directory -Force $t | Out-Null
+          "ctrl_tcp_listen 127.0.0.1:24111`nsip_listen 127.0.0.1:0`nmodule_app ctrl_tcp.so`n" | Set-Content "$t\config" -Encoding ascii -NoNewline
+          $p = Start-Process (Resolve-Path out\baresip.exe) -ArgumentList '-f','.' -WorkingDirectory $t -PassThru -WindowStyle Hidden
+          $ok = $false
+          for ($i = 0; $i -lt 20 -and -not $ok; $i++) {
+            Start-Sleep -Milliseconds 500
+            try { (New-Object Net.Sockets.TcpClient('127.0.0.1', 24111)).Close(); $ok = $true } catch {}
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "baresip não abriu ctrl_tcp com -f (config ignorado?)" }
+          "ctrl_tcp ok"
+          # Sem a libopus o CMake do baresip pula o módulo calado e o app volta a tomar 488 do PBX.
+          if (-not (Select-String -Path out\baresip.exe -Pattern 'sprop-stereo' -SimpleMatch -Quiet)) { throw "baresip.exe saiu sem o módulo opus" }
+          # Idem para vídeo: sem libvpx/SDL2 o CMake pula vp8/sdl calado. Strings só existem nesses módulos (não em src/ nem nos demais).
+          if (-not (Select-String -Path out\baresip.exe -Pattern 'vp8: enc init' -SimpleMatch -Quiet)) { throw "baresip.exe saiu sem o módulo vp8" }
+          if (-not (Select-String -Path out\baresip.exe -Pattern 'unable to create sdl window' -SimpleMatch -Quiet)) { throw "baresip.exe saiu sem o módulo sdl" }
+          # Módulo do app (ganho + troca de dispositivo): vem de baresip-modules/ via APP_MODULES.
+          if (-not (Select-String -Path out\baresip.exe -Pattern 'ntaudio_play_gain' -SimpleMatch -Quiet)) { throw "baresip.exe saiu sem o módulo ntaudio" }
+          # G.729 (baresip-modules/g729 + libbcg729): string do info() do módulo, que não existe no baresip nem nos outros módulos.
+          if (-not (Select-String -Path out\baresip.exe -Pattern 'g729: codec G.729 via libbcg729' -SimpleMatch -Quiet)) { throw "baresip.exe saiu sem o módulo g729 (libbcg729 não ligada)" }
+      - name: Smoke — chamada de vídeo VP8 entre dois baresip.exe
+        shell: pwsh
+        run: |
+          python scripts/video-smoke.py out\baresip.exe
+          if ($LASTEXITCODE) { throw "smoke de vídeo falhou ($LASTEXITCODE)" }
+      - name: Smoke — chamada G.729 entre dois baresip.exe
+        shell: pwsh
+        run: |
+          python scripts/g729-smoke.py out\baresip.exe
+          if ($LASTEXITCODE) { throw "smoke de G.729 falhou ($LASTEXITCODE)" }
+      - name: Dependências do baresip.exe
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          dumpbin /dependents out\baresip.exe > deps.txt || exit /b 1
+          type deps.txt
+      - name: Gate de dependências (só DLLs do sistema + VC++ runtime e SDL2.dll empacotados)
+        shell: pwsh
+        run: |
+          $allow = @('kernel32','advapi32','ws2_32','wsock32','crypt32','user32','gdi32','ole32','oleaut32',
+                     'iphlpapi','bcrypt','ncrypt','secur32','dnsapi','dbghelp','qwave','shell32','shlwapi',
+                     'avrt','winmm','mmdevapi','ksuser','propsys','rpcrt4','ntdll',
+                     'vcruntime140','vcruntime140_1','vcruntime140_threads','sdl2')
+          $deps = @(Select-String -Path deps.txt -Pattern '^\s+(\S+\.dll)\s*$' |
+                    ForEach-Object { $_.Matches[0].Groups[1].Value.ToLower() } | Sort-Object -Unique)
+          if ($deps.Count -eq 0) { Write-Host "::error::dumpbin não listou dependências"; exit 1 }
+          Write-Host "Dependências: $($deps -join ', ')"
+          $bad = @($deps | Where-Object { ($_ -replace '\.dll$', '') -notin $allow -and $_ -notlike 'api-ms-win-crt-*' })
+          if ($bad.Count -gt 0) { Write-Host "::error::DLL fora da allowlist (não vai no instalador): $($bad -join ', ')"; exit 1 }
+      - name: Manifesto do build (build-manifest.txt)
+        shell: bash
+        run: |
+          sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
+          {
+            echo "NT-Fone engine: manifesto do build"
+            echo "repositório: $GITHUB_REPOSITORY"
+            echo "commit do motor: $GITHUB_SHA"
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "imagem do runner: ${ImageOS:-n/d} ${ImageVersion:-n/d}"
+            echo
+            cat facts.txt
+            echo
+            echo "SHA256 openssl-windows-x64.zip: $(sha256_of openssl.zip)"
+            echo "OpenSSL (OPENSSL_VERSION_STR de openssl-windows-x64/include/openssl/opensslv.h): $(sed -n 's/^# *define OPENSSL_VERSION_STR *"\(.*\)".*/\1/p' openssl-windows-x64/include/openssl/opensslv.h | tr -d '\r')"
+            echo "SHA256 SDL2.dll: $(sha256_of out/SDL2.dll)"
+            echo "SHA256 baresip.exe: $(sha256_of out/baresip.exe)"
+          } > build-manifest.txt
+          cat build-manifest.txt
+      # Pacote do código-fonte correspondente: este repositório (módulos, patches, scripts, workflow) + fontes dos terceiros nas versões usadas.
+      - name: Pacote do código-fonte correspondente
+        shell: bash
+        run: |
+          # Confere que cada fonte esperada está no srcpkg/: nunca gerar pacote incompleto calado.
+          missing=0
+          for f in "re-$BARESIP_VERSION" "baresip-$BARESIP_VERSION" "opus-$OPUS_VERSION" "bcg729-$BCG729_VERSION" "openssl-$OPENSSL_VERSION" "SDL2-$SDL_VERSION"; do
+            [ -s "srcpkg/$f.tar.gz" ] || { echo "::error::falta srcpkg/$f.tar.gz"; missing=1; }
+          done
+          for f in srcpkg/libvpx-*.tar.gz srcpkg/vcpkg-port-libvpx-*.tar.gz; do
+            [ -s "$f" ] || { echo "::error::falta $f"; missing=1; }
+          done
+          [ "$missing" = 0 ] || exit 1
+          mkdir -p release pkg/nt-fone-engine-source/third-party
+          git archive --format=tar --prefix=nt-fone-engine/ HEAD | tar -x -C pkg/nt-fone-engine-source
+          cp srcpkg/*.tar.gz pkg/nt-fone-engine-source/third-party/
+          cp build-manifest.txt pkg/nt-fone-engine-source/
+          tar -czf release/nt-fone-engine-source.tar.gz -C pkg nt-fone-engine-source
+          tar -tzf release/nt-fone-engine-source.tar.gz
+      - name: Arquivos da release e SHA256SUMS
+        shell: bash
+        run: |
+          cp out/baresip.exe out/SDL2.dll build-manifest.txt release/
+          (cd out/sounds && 7z a -tzip ../../release/sounds.zip '*.wav')
+          (cd release && sha256sum baresip.exe SDL2.dll sounds.zip nt-fone-engine-source.tar.gz > SHA256SUMS && cat SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: baresip-windows-x64
+          path: out/
+          if-no-files-found: error
+      # Sempre sobe (com ou sem release): o código-fonte correspondente, o manifesto e as somas acompanham o binário.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: release/
+          if-no-files-found: error
+
+  # Só com release_tag: único job com permissão de escrita.
+  release:
+    needs: baresip
+    if: inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+          path: release
+      - name: Criar a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          cd release
+          sha256sum -c SHA256SUMS
+          cat > notes.md <<EOF
+          Motor SIP do NT-Fone (baresip com os módulos ntaudio e g729 e os patches deste repositório), compilado pelo workflow windows no commit $GITHUB_SHA.
+
+          Licença: GNU GPL v3 ou posterior. O baresip.exe liga estaticamente a libbcg729 (GPLv3), então é distribuído sob a GPLv3.
+          O código-fonte correspondente completo (este repositório mais o código-fonte dos componentes de terceiros nas versões usadas) está em nt-fone-engine-source.tar.gz.
+          build-manifest.txt traz as versões, os commits e os hashes do build; SHA256SUMS traz as somas SHA-256 dos arquivos desta release.
+
+          Como obter o código-fonte de uma versão do instalador, como compilar e a oferta escrita de código-fonte: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$RELEASE_TAG/README.md
+          EOF
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file notes.md \
+            baresip.exe SDL2.dll sounds.zip nt-fone-engine-source.tar.gz SHA256SUMS build-manifest.txt

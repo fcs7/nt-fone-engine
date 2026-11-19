@@ -1,0 +1,55 @@
+Origem dos textos de licença em licenses/
+
+Todos os arquivos foram baixados em 2026-11-19, sem nenhuma alteração, do repositório oficial do componente,
+no commit ou tag usados pelo build (ver THIRD_PARTY.md e .github/workflows/windows.yml). O SHA-256 de cada arquivo está abaixo
+para conferência. O texto da GPLv3 do próprio projeto (LICENSE, na raiz) vem de https://www.gnu.org/licenses/gpl-3.0.txt.
+
+licenses/re/LICENSE
+  componente: re v4.12.0 (commit 65555dad439de9d6a81b3ee6092b9c096585249b)
+  origem: https://raw.githubusercontent.com/baresip/re/65555dad439de9d6a81b3ee6092b9c096585249b/LICENSE
+  sha256: 76b5c9a0aa85ac72a6d5d2e2998f5ea4462ff633e585e59a749c7f9d506c0b76
+
+licenses/baresip/LICENSE
+  componente: baresip v4.12.0 (commit 9cfab81550acc4bd38d6580d79b45cc6eea65cd6)
+  origem: https://raw.githubusercontent.com/baresip/baresip/9cfab81550acc4bd38d6580d79b45cc6eea65cd6/LICENSE
+  sha256: 020859591b1d52b62d9436e89a13c279c890099e0b412984cf599a298aa7b128
+
+licenses/opus/COPYING
+  componente: opus v1.5.2 (commit ddbe48383984d56acd9e1ab6a090c54ca6b735a6; a tag v1.5.2 é anotada, objeto 5ec2f3c915d0529b94a3a302969c673531654824)
+  origem: https://raw.githubusercontent.com/xiph/opus/ddbe48383984d56acd9e1ab6a090c54ca6b735a6/COPYING
+  sha256: 01e1167d54a096d123cf6dfbbeb19587278845c6481d2d66d545669846079551
+
+licenses/bcg729/LICENSE.txt
+  componente: bcg729 1.1.1 (commit faaa895862165acde6df8add722ba4f85a25007d)
+  origem: https://raw.githubusercontent.com/BelledonneCommunications/bcg729/faaa895862165acde6df8add722ba4f85a25007d/LICENSE.txt
+  sha256: 1b3782ccad7b8614100cda30d3faf42fc39f2e97932908c543005053b654ca68
+
+licenses/bcg729/README.md
+  componente: bcg729 1.1.1 (commit faaa895862165acde6df8add722ba4f85a25007d); README.md inteiro, de onde vem o trecho 'Licensing' (licença dupla GPLv3 / comercial)
+  origem: https://raw.githubusercontent.com/BelledonneCommunications/bcg729/faaa895862165acde6df8add722ba4f85a25007d/README.md
+  sha256: 2a55425e84d35faed8d8b0b6f0761da2f07ae65b99bfa6ea911c13887d835604
+
+licenses/openssl/LICENSE.txt
+  componente: OpenSSL 4.0.3 (tag openssl-4.0.3, objeto de tag ae89995a4fdd66c460a916dce3950948a0b5a8e6, commit af1775b60dfa141a4ad762585052cabeb9f37e9e)
+  origem: https://raw.githubusercontent.com/openssl/openssl/openssl-4.0.3/LICENSE.txt
+  sha256: 7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a
+
+licenses/SDL2/LICENSE.txt
+  componente: SDL2 2.32.10 (tag release-2.32.10, commit 5d249570393f7a37e037abf22cd6012a4cc56a71)
+  origem: https://raw.githubusercontent.com/libsdl-org/SDL/5d249570393f7a37e037abf22cd6012a4cc56a71/LICENSE.txt
+  sha256: 97f35b302b361680ec1e891e95d2d52097bb95abff361434916d99dc1305f127
+
+licenses/libvpx/LICENSE
+  componente: libvpx v1.16.0 (tag v1.16.0, objeto de tag 04def0a07f8bfa95785e30e6db95036cda17f9b2, commit 1024874c5919305883187e2953de8fcb4c3d7fa6). ATENÇÃO: o workflow não fixa a versão do libvpx (vem do vcpkg do runner); 1.16.0 é a versão da porta do vcpkg em 2026-11-19. O tarball do libvpx dentro de nt-fone-engine-source.tar.gz traz LICENSE e PATENTS da versão exata de cada build
+  origem: https://raw.githubusercontent.com/webmproject/libvpx/v1.16.0/LICENSE
+  sha256: 8267348d5af1262c11d1a08de2f5afc77457755f1ac658627dd9acf71011d615
+
+licenses/libvpx/PATENTS
+  componente: libvpx v1.16.0 (mesma observação acima)
+  origem: https://raw.githubusercontent.com/webmproject/libvpx/v1.16.0/PATENTS
+  sha256: cc3273e0694ea5896145e0677699b53471b03ea43021ddc50e7923fbb9f5023c
+
+LICENSE (raiz)
+  componente: texto da GNU GPL versão 3, deste projeto
+  origem: https://www.gnu.org/licenses/gpl-3.0.txt
+  sha256: 3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986
