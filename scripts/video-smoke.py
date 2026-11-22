@@ -155,8 +155,9 @@ def vdisp(out):
     return (int(m[1]), int(m[2]), int(m[3]), int(k[1]) if k else None) if m else (0, 0, 0, None)
 
 
-# video_debug antes do 1º quadro derruba o baresip no MSVC (0xC0000005): vrx/vtx->fmt começam em -1, o enum do MSVC é
-# signed e vidfmt_name(-1) indexa fora da tabela (bug do re; o app nunca envia video_debug). Espera o 1º quadro decodificado nos dois lados.
+# video_debug antes do 1º quadro derrubava o baresip no MSVC (0xC0000005): vrx/vtx->fmt começam em -1, o enum do MSVC é
+# signed e vidfmt_name(-1) indexava fora da tabela. patches/patch-re-vidfmt-name.py corrige; mesmo assim espera o 1º quadro
+# decodificado nos dois lados (o teste continua válido).
 MARK = "video: receiving with resolution"
 t0 = time.time()
 while any(MARK not in open(u.log, errors="replace").read() for u in (a, b)):

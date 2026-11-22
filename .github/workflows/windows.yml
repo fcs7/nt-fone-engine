@@ -75,6 +75,8 @@ jobs:
           git clone --depth 1 -b $BARESIP_VERSION https://github.com/baresip/re re
           archive_clone re $BARESIP_VERSION
           python patches/patch-re-codec-prio.py re
+          # vidfmt_name(-1) lê fora da tabela no MSVC (enum com sinal): derrubava o baresip no video_debug antes do 1º quadro.
+          python patches/patch-re-vidfmt-name.py re
           git clone --depth 1 -b $BARESIP_VERSION https://github.com/baresip/baresip baresip
           archive_clone baresip $BARESIP_VERSION
           git clone --depth 1 -b $OPUS_VERSION https://github.com/xiph/opus opus

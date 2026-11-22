@@ -59,6 +59,7 @@ git clone --depth 1 -b v1.5.2 https://github.com/xiph/opus opus
 git clone --depth 1 -b 1.1.1 https://github.com/BelledonneCommunications/bcg729 bcg729
 git -C bcg729 rev-parse HEAD   # tem de ser faaa895862165acde6df8add722ba4f85a25007d
 python engine/patches/patch-re-codec-prio.py re
+python engine/patches/patch-re-vidfmt-name.py re
 python engine/patches/apply-baresip-patches.py baresip engine/assets/ntfone.ico
 ```
 
@@ -113,6 +114,7 @@ Um build local não é byte a byte igual ao da release: o hash do `baresip.exe` 
 | `baresip-modules/ntaudio/` | Módulo do baresip: ganho de microfone e de alto-falante, troca de dispositivo de áudio e de câmera durante a chamada, teste de áudio e toque de chamada recebida sintetizado |
 | `baresip-modules/g729/` | Módulo do baresip: codec G.729 (RFC 3551, RFC 4856) sobre a libbcg729 |
 | `patches/patch-re-codec-prio.py` | Patch no `re` (`src/sdp/media.c`): o codec é escolhido pela prioridade local, não pela ordem da oferta |
+| `patches/patch-re-vidfmt-name.py` | Patch no `re` (`rem/vid/fmt.c`): `vidfmt_name()` recusa formato negativo (crash do `video_debug` no MSVC) |
 | `patches/apply-baresip-patches.py` | Patches no baresip: `-f <dir>` no `main.c` (MSVC não tem `getopt.h`), remoção da tecla `q` no módulo `sdl`, ícone no `baresip.exe` e `enable_language(RC)` no CMake |
 | `scripts/` | Smokes usados pelo workflow (`video-smoke.py`, `g729-smoke.py`) |
 | `assets/ntfone.ico` | Ícone embutido no `baresip.exe` |
