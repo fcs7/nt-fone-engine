@@ -5,7 +5,7 @@
 Uso: python patches/apply-baresip-patches.py <dir do baresip> <caminho do ntfone.ico>
 
 Cada patch confere com assert que o trecho original existe uma única vez: se o baresip mudar, o build falha em vez de seguir sem o patch.
-O patch do re (patches/patch-re-codec-prio.py) é separado.
+Os patches do re (patches/patch-re-codec-prio.py) e do ctrl_tcp (patches/patch-ctrl-tcp.py) são separados.
 """
 import pathlib
 import shutil

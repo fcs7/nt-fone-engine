@@ -22,6 +22,12 @@ env:
   BARESIP_VERSION: v4.12.0
   OPUS_VERSION: v1.5.2
   BCG729_VERSION: 1.1.1
+  # Commit da tag v4.12.0 do re, conferido após o clone, como o do bcg729.
+  RE_SHA: 65555dad439de9d6a81b3ee6092b9c096585249b
+  # Commit da tag v4.12.0 do baresip, conferido após o clone.
+  BARESIP_SHA: 9cfab81550acc4bd38d6580d79b45cc6eea65cd6
+  # Commit da tag v1.5.2 do Opus (a tag é anotada; rev-parse HEAD devolve o commit), conferido após o clone.
+  OPUS_SHA: ddbe48383984d56acd9e1ab6a090c54ca6b735a6
   # Commit da tag 1.1.1 (anotada; gh api repos/BelledonneCommunications/bcg729/git/ref/tags/1.1.1 + git/tags/<sha>): o clone confere, como o hash do SDL.
   BCG729_SHA: faaa895862165acde6df8add722ba4f85a25007d
   SDL_VERSION: 2.32.10
@@ -73,11 +79,14 @@ jobs:
             echo "$1: tag $2, commit $(git -C "$1" rev-parse HEAD)" >> facts.txt
           }
           git clone --depth 1 -b $BARESIP_VERSION https://github.com/baresip/re re
+          test "$(git -C re rev-parse HEAD)" = "$RE_SHA" || { echo "::error::re $BARESIP_VERSION não aponta mais para $RE_SHA"; exit 1; }
           archive_clone re $BARESIP_VERSION
           python patches/patch-re-codec-prio.py re
           git clone --depth 1 -b $BARESIP_VERSION https://github.com/baresip/baresip baresip
+          test "$(git -C baresip rev-parse HEAD)" = "$BARESIP_SHA" || { echo "::error::baresip $BARESIP_VERSION não aponta mais para $BARESIP_SHA"; exit 1; }
           archive_clone baresip $BARESIP_VERSION
           git clone --depth 1 -b $OPUS_VERSION https://github.com/xiph/opus opus
+          test "$(git -C opus rev-parse HEAD)" = "$OPUS_SHA" || { echo "::error::opus $OPUS_VERSION não aponta mais para $OPUS_SHA"; exit 1; }
           archive_clone opus $OPUS_VERSION
           # libbcg729 (G.729, módulo baresip-modules/g729): tag fixada pelo commit.
           git clone --depth 1 -b $BCG729_VERSION https://github.com/BelledonneCommunications/bcg729 bcg729
@@ -87,6 +96,7 @@ jobs:
           # baresip lê %APPDATA%\.baresip (ctrl_tcp do nosso config nunca abria). Aceita "-f <dir>".
           # Também: tecla q do sdl, ícone no baresip.exe e CMake com RC (ver o próprio script).
           python patches/apply-baresip-patches.py baresip assets/ntfone.ico
+          python patches/patch-ctrl-tcp.py baresip
       - name: libvpx (vcpkg) + SDL2
         shell: pwsh
         run: |
