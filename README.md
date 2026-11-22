@@ -60,6 +60,7 @@ git clone --depth 1 -b 1.1.1 https://github.com/BelledonneCommunications/bcg729 
 git -C bcg729 rev-parse HEAD   # tem de ser faaa895862165acde6df8add722ba4f85a25007d
 python engine/patches/patch-re-codec-prio.py re
 python engine/patches/apply-baresip-patches.py baresip engine/assets/ntfone.ico
+python engine/patches/patch-ctrl-tcp.py baresip
 ```
 
 (Em vez de clonar, dá para extrair os tarballs de `third-party/` do pacote de fontes e renomear as pastas para `re`, `baresip`, `opus` e `bcg729`.)
@@ -113,8 +114,9 @@ Um build local não é byte a byte igual ao da release: o hash do `baresip.exe` 
 | `baresip-modules/ntaudio/` | Módulo do baresip: ganho de microfone e de alto-falante, troca de dispositivo de áudio e de câmera durante a chamada, teste de áudio e toque de chamada recebida sintetizado |
 | `baresip-modules/g729/` | Módulo do baresip: codec G.729 (RFC 3551, RFC 4856) sobre a libbcg729 |
 | `patches/patch-re-codec-prio.py` | Patch no `re` (`src/sdp/media.c`): o codec é escolhido pela prioridade local, não pela ordem da oferta |
-| `patches/apply-baresip-patches.py` | Patches no baresip: `-f <dir>` no `main.c` (MSVC não tem `getopt.h`), remoção da tecla `q` no módulo `sdl`, `ctrl_tcp` (recusa a segunda conexão e fecha em quadro netstring inválido), ícone no `baresip.exe` e `enable_language(RC)` no CMake |
-| `scripts/` | Smokes usados pelo workflow (`video-smoke.py`, `g729-smoke.py`) |
+| `patches/patch-ctrl-tcp.py` | Patch no `ctrl_tcp` do baresip: com um cliente conectado, recusa a conexão nova; quadro netstring inválido fecha a conexão |
+| `patches/apply-baresip-patches.py` | Patches no baresip: `-f <dir>` no `main.c` (MSVC não tem `getopt.h`), remoção da tecla `q` no módulo `sdl`, ícone no `baresip.exe` e `enable_language(RC)` no CMake |
+| `scripts/` | Smokes usados pelo workflow (`video-smoke.py`, `g729-smoke.py`, `ctrl-tcp-smoke.py`) |
 | `assets/ntfone.ico` | Ícone embutido no `baresip.exe` |
 | `.github/workflows/windows.yml` | Build, smokes, manifesto, pacote de fontes e release |
 | `licenses/`, `THIRD_PARTY.md` | Licenças e lista de componentes de terceiros |

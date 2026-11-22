@@ -87,6 +87,7 @@ jobs:
           # baresip lê %APPDATA%\.baresip (ctrl_tcp do nosso config nunca abria). Aceita "-f <dir>".
           # Também: tecla q do sdl, ícone no baresip.exe e CMake com RC (ver o próprio script).
           python patches/apply-baresip-patches.py baresip assets/ntfone.ico
+          python patches/patch-ctrl-tcp.py baresip
       - name: libvpx (vcpkg) + SDL2
         shell: pwsh
         run: |
