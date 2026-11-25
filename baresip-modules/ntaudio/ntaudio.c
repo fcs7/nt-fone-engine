@@ -7,7 +7,7 @@
  * O baresip não tem volume de reprodução, e os comandos do menu recusam dispositivos
  * fora da lista que o wasapi montou no init (e nunca aceitam "default").
  *
- * Config: ntaudio_src_gain / ntaudio_play_gain (0.0 a 4.0, padrão 1.0).
+ * Config: ntaudio_src_gain / ntaudio_play_gain (0.0 a 8.0, padrão 1.0).
  * Comandos: ntaudio_src_gain <g>, ntaudio_play_gain <g>,
  *           ntaudio_player <mod>,<dev>, ntaudio_source <mod>,<dev>
  *
@@ -33,7 +33,7 @@
 #endif
 
 
-#define GAIN_MAX 4.0
+#define GAIN_MAX 8.0
 
 #define TEST_SRATE   48000
 #define TEST_PTIME   20
@@ -918,8 +918,8 @@ static int cmd_camera(struct re_printf *pf, void *arg)
 
 
 static const struct cmd cmdv[] = {
-	{"ntaudio_src_gain",  0, CMD_PRM, "Ganho do microfone <0.0-4.0>", cmd_src_gain},
-	{"ntaudio_play_gain", 0, CMD_PRM, "Ganho do alto-falante <0.0-4.0>", cmd_play_gain},
+	{"ntaudio_src_gain",  0, CMD_PRM, "Ganho do microfone <0.0-8.0>", cmd_src_gain},
+	{"ntaudio_play_gain", 0, CMD_PRM, "Ganho do alto-falante <0.0-8.0>", cmd_play_gain},
 	{"ntaudio_player",    0, CMD_PRM, "Trocar player <mod>,<dev>", cmd_player},
 	{"ntaudio_source",    0, CMD_PRM, "Trocar source <mod>,<dev>", cmd_source},
 	{"ntaudio_tone",      0, 0,       "Tocar o tom de teste", cmd_tone},
